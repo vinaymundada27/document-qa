@@ -4,6 +4,7 @@ from os.path import isfile
 import re
 import numpy as np
 import tensorflow as tf
+import sys
 
 from docqa.data_processing.document_splitter import MergeParagraphs, TopTfIdf, ShallowOpenWebRanker, PreserveParagraphs
 from docqa.data_processing.qa_training_data import ParagraphAndQuestion, ParagraphAndQuestionSpec
@@ -17,18 +18,31 @@ Script to run a model on user provided question/context document.
 This demonstrates how to use our document-pipeline on new input
 """
 
-
 def main():
     parser = argparse.ArgumentParser(description="Run an ELMo model on user input")
-    parser.add_argument("model", help="Model directory")
+    # parser.add_argument("model", type=int, help="Model directory")
     parser.add_argument("question", help="Question to answer")
     parser.add_argument("documents", help="List of text documents to answer the question with", nargs='+')
     args = parser.parse_args()
 
+    # Models path
+    SQUAD_MODEL_DIRECTORY_PATH = 'docqa/models-cpu/squad'
+    SQUAD_SHARED_NORM_MODEL_DIRECTORY_PATH = 'docqa/models-cpu/squad-shared-norm'
+    TRIVIAQA_MODEL_DIRECTORY_PATH = 'docqa/models-cpu/triviaqa-unfiltered-shared-norm'
+    TRIVIAQA_SHARED_NORM_MODEL_DIRECTORY_PATH = 'docqa/models-cpu/triviaqa-web-shared-norm'
+    
+    models_directory = [
+        SQUAD_MODEL_DIRECTORY_PATH,
+        SQUAD_SHARED_NORM_MODEL_DIRECTORY_PATH,
+        TRIVIAQA_MODEL_DIRECTORY_PATH,
+        TRIVIAQA_SHARED_NORM_MODEL_DIRECTORY_PATH
+    ]
+
     print("Preprocessing...")
 
     # Load the model
-    model_dir = ModelDir(args.model)
+    # model_dir = ModelDir(args.model)
+    model_dir = ModelDir(models_directory[0])
     model = model_dir.get_model()
     if not isinstance(model, ParagraphQuestionModel):
         raise ValueError("This script is built to work for ParagraphQuestionModel models only")
@@ -77,8 +91,9 @@ def main():
     else:
         # Otherwise just use flattened text
         context = [flatten_iterable(x.text) for x in context]
-
+        
     print("Setting up model")
+    
     # Tell the model the batch size (can be None) and vocab to expect, This will load the
     # needed word vectors and fix the batch size to use when building the graph / encoding the input
     voc = set(question)
@@ -95,7 +110,7 @@ def main():
     # session to figure out the # of parameters needed for each layer. The cpu-compatible models don't need this.
     with sess.as_default():
         # 8 means to limit the span to size 8 or less
-        best_spans, conf = model.get_prediction().get_best_span(8)
+        best_spans, conf = model.get_prediction().get_best_span(10)
 
     # Loads the saved weights
     model_dir.restore_checkpoint(sess)
@@ -113,6 +128,9 @@ def main():
 
     best_para = np.argmax(conf)  # We get output for each paragraph, select the most-confident one to print
     print("Best Paragraph: " + str(best_para))
+    para_id = int(str(best_para))
+    # print("Best Paragraph: \n" + (" ".join((paras[para_id].text)[0])))
+    print("Best Paragraph: \n" + " ".join(context[para_id]))
     print("Best span: " + str(best_spans[best_para]))
     print("Answer text: " + " ".join(context[best_para][best_spans[best_para][0]:best_spans[best_para][1]+1]))
     print("Confidence: " + str(conf[best_para]))
